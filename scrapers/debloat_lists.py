@@ -17,6 +17,7 @@ by package name, and written into the database with ``source='debloat'``.
 
 import sys
 import os
+import re
 
 import requests
 
@@ -115,15 +116,23 @@ def _extract_entries(
         if not pkg or not isinstance(pkg, str):
             continue
 
-        # Only use `label` or `name` — these are clean one-line names.
-        # If neither is present, the entry has no usable app name, so skip it.
-        # Do NOT fall back to `description` — it's a long paragraph, not a name.
+        # Prefer `label` or `name` — clean one-line names.
         label = entry.get("label") or entry.get("name")
+        if not label or not isinstance(label, str) or not label.strip():
+            # Fall back to the first sentence of `description`.
+            desc = entry.get("description")
+            if isinstance(desc, str) and desc.strip():
+                # Take text up to the first period, newline, paren, colon, or URL.
+                first = desc.strip().split("\n")[0].strip()
+                first = re.split(r'[.。:：()（）\[\]]', first)[0].strip()
+                # Remove URLs
+                first = re.sub(r'https?://\S+', '', first).strip()
+                if 3 <= len(first) <= 60:
+                    label = first
         if not label or not isinstance(label, str) or not label.strip():
             continue
         label = label.strip()
-        # Reject anything that looks like a verbose description rather than a name.
-        if len(label) > 50:
+        if len(label) > 60:
             continue
 
         # Derive a category — most specific first.
