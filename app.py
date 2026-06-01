@@ -54,6 +54,94 @@ COL_STATUS = 4
 
 HEADERS = ["序号", "包名", "应用名", "类别", "状态"]
 
+# Category name translation: English → Chinese
+_CATEGORY_ZH: dict[str, str] = {
+    "Tools": "工具",
+    "Education": "教育",
+    "Productivity": "效率",
+    "Finance": "财务",
+    "Business": "商务",
+    "Health & Fitness": "健康与健身",
+    "Sports": "体育",
+    "Shopping": "购物",
+    "Lifestyle": "生活时尚",
+    "Multimedia": "多媒体",
+    "Entertainment": "娱乐",
+    "Music & Audio": "音乐与音频",
+    "Connectivity": "连接",
+    "Simulation": "模拟",
+    "Aosp": "AOSP",
+    "Casual": "休闲",
+    "Travel & Local": "外出旅行与本地生活",
+    "Maps & Navigation": "地图与导航",
+    "Social": "社交",
+    "Puzzle": "益智",
+    "Communication": "通讯",
+    "Personalization": "个性化",
+    "Science & Education": "科学与教育",
+    "Carrier": "运营商",
+    "Internet": "互联网",
+    "System": "系统",
+    "Misc": "杂项",
+    "Oem": "OEM",
+    "Game": "游戏",
+    "Medical": "医疗",
+    "Food & Drink": "餐饮美食",
+    "News & Magazines": "新闻杂志",
+    "Books & Reference": "图书与参考",
+    "Photography": "摄影",
+    "Video Players": "视频播放",
+    "Art & Design": "艺术与设计",
+    "Auto & Vehicles": "汽车与车辆",
+    "Beauty": "美妆",
+    "Dating": "约会交友",
+    "Events": "活动",
+    "House & Home": "家居",
+    "Libraries & Demo": "库与演示",
+    "Parenting": "育儿",
+    "Weather": "天气",
+    "Comics": "漫画",
+    "Action": "动作",
+    "Adventure": "冒险",
+    "Arcade": "街机",
+    "Board": "桌游",
+    "Card": "卡牌",
+    "Casino": "赌场",
+    "Educational": "教育游戏",
+    "Music": "音乐",
+    "Racing": "竞速",
+    "Role Playing": "角色扮演",
+    "Strategy": "策略",
+    "Trivia": "益智问答",
+    "Word": "文字游戏",
+    "Roleplaying": "角色扮演",
+    "Finance & Accounting": "财务与会计",
+    "Security": "安全",
+    "Privacy": "隐私",
+    "VPN & Proxy": "VPN与代理",
+    "Crypto": "加密货币",
+    "AI": "人工智能",
+    "Root Tools": "Root工具",
+    "Developer Tools": "开发者工具",
+    "File Transfer": "文件传输",
+    "Remote Control": "远程控制",
+    "App Store": "应用商店",
+    "Browser": "浏览器",
+    "AR": "增强现实",
+    "Virtual Machine": "虚拟机",
+    "Media": "媒体",
+    "Delete": "可删除",
+    "Replace": "可替换",
+}
+
+def _to_zh_category(category: str | None) -> str:
+    """Translate a category string to Chinese if a mapping exists."""
+    if not category:
+        return ""
+    cat = category.strip()
+    return _CATEGORY_ZH.get(cat, cat)
+
+
 # Row background colours
 COLOR_FOUND = QColor("#E0FFE0")       # light green
 COLOR_NOT_FOUND = QColor("#FFE0E0")   # light red
@@ -104,7 +192,7 @@ class PackageTableModel(QAbstractTableModel):
                     return row["app_name"]
                 return "(未找到)"
             elif col == COL_CATEGORY:
-                return row.get("category", "")
+                return _to_zh_category(row.get("category", ""))
             elif col == COL_STATUS:
                 return "✓ 已识别" if row["found"] else "✗ 未识别"
 
