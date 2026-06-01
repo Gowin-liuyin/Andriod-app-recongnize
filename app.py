@@ -49,9 +49,10 @@ from import_export import CSV_COLUMNS_EXPORT, export_csv, import_csv
 COL_INDEX = 0
 COL_PACKAGE = 1
 COL_APP_NAME = 2
-COL_STATUS = 3
+COL_CATEGORY = 3
+COL_STATUS = 4
 
-HEADERS = ["序号", "包名", "应用名", "状态"]
+HEADERS = ["序号", "包名", "应用名", "类别", "状态"]
 
 # Row background colours
 COLOR_FOUND = QColor("#E0FFE0")       # light green
@@ -102,6 +103,8 @@ class PackageTableModel(QAbstractTableModel):
                 if row["found"] and row["app_name"]:
                     return row["app_name"]
                 return "(未找到)"
+            elif col == COL_CATEGORY:
+                return row.get("category", "")
             elif col == COL_STATUS:
                 return "✓ 已识别" if row["found"] else "✗ 未识别"
 
@@ -138,12 +141,13 @@ class PackageTableModel(QAbstractTableModel):
         package_name: str,
         app_name: str | None = None,
         found: bool = False,
+        category: str = "",
     ) -> None:
         """Append a single row to the model."""
         row_idx = len(self._rows)
         self.beginInsertRows(QModelIndex(), row_idx, row_idx)
         self._rows.append(
-            {"package_name": package_name, "app_name": app_name, "found": found}
+            {"package_name": package_name, "app_name": app_name, "found": found, "category": category}
         )
         self.endInsertRows()
 
@@ -165,6 +169,7 @@ class PackageTableModel(QAbstractTableModel):
         package_name: str,
         app_name: str,
         found: bool = True,
+        category: str = "",
     ) -> None:
         """Update a single row in-place and emit ``dataChanged``."""
         if 0 <= row_idx < len(self._rows):
@@ -172,6 +177,7 @@ class PackageTableModel(QAbstractTableModel):
                 "package_name": package_name,
                 "app_name": app_name,
                 "found": found,
+                "category": category,
             }
             top_left = self.index(row_idx, 0)
             bottom_right = self.index(row_idx, len(HEADERS) - 1)
@@ -326,6 +332,8 @@ class MainWindow(QMainWindow):
         hdr.setSectionResizeMode(COL_PACKAGE, QHeaderView.Stretch)
         hdr.setSectionResizeMode(COL_APP_NAME, QHeaderView.Fixed)
         hdr.resizeSection(COL_APP_NAME, 200)
+        hdr.setSectionResizeMode(COL_CATEGORY, QHeaderView.Fixed)
+        hdr.resizeSection(COL_CATEGORY, 120)
         hdr.setSectionResizeMode(COL_STATUS, QHeaderView.Fixed)
         hdr.resizeSection(COL_STATUS, 80)
 
@@ -354,6 +362,7 @@ class MainWindow(QMainWindow):
                 package_name=result["package_name"],
                 app_name=result["app_name"],
                 found=True,
+                category=result.get("category", ""),
             )
             self._table.scrollToBottom()
             self._update_status_bar()
@@ -368,6 +377,7 @@ class MainWindow(QMainWindow):
                     package_name=row["package_name"],
                     app_name=row["app_name"],
                     found=True,
+                    category=row.get("category", ""),
                 )
             self._table.scrollToBottom()
             self._update_status_bar()
@@ -418,9 +428,14 @@ class MainWindow(QMainWindow):
         for rec in records:
             pkg = rec["package_name"]
             app = rec.get("app_name", "").strip()
+            cat = rec.get("category", "").strip()
             if app:
-                # CSV already had an app name — use it directly
-                self._model.add_row(package_name=pkg, app_name=app, found=True)
+                # CSV already had an app name — use it directly, but check DB for category
+                if not cat:
+                    db_row = self._db.search(pkg)
+                    if db_row:
+                        cat = db_row.get("category", "")
+                self._model.add_row(package_name=pkg, app_name=app, found=True, category=cat)
                 # Persist to the local DB for future queries
                 self._db.upsert(package_name=pkg, app_name=app)
             else:
@@ -428,15 +443,21 @@ class MainWindow(QMainWindow):
 
         # Batch-lookup packages that had no pre-filled name
         if need_lookup:
-            found_map: dict[str, str] = {}
+            found_map: dict[str, dict] = {}
             db_rows = self._db.search_batch(need_lookup)
             for row in db_rows:
-                found_map[row["package_name"]] = row["app_name"]
+                found_map[row["package_name"]] = {
+                    "app_name": row["app_name"],
+                    "category": row.get("category", ""),
+                }
 
             for pkg in need_lookup:
                 if pkg in found_map:
                     self._model.add_row(
-                        package_name=pkg, app_name=found_map[pkg], found=True
+                        package_name=pkg,
+                        app_name=found_map[pkg]["app_name"],
+                        category=found_map[pkg]["category"],
+                        found=True,
                     )
                 else:
                     self._model.add_row(package_name=pkg, app_name=None, found=False)
@@ -470,6 +491,7 @@ class MainWindow(QMainWindow):
                 {
                     "package_name": r["package_name"],
                     "app_name": r["app_name"] if r["found"] else "",
+                    "category": r.get("category", ""),
                     # status is auto-computed by export_csv()
                 }
             )
