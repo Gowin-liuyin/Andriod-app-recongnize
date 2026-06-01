@@ -275,32 +275,17 @@ def scrape(db: AppDatabase, delay: float = 0.5) -> int:
     for idx, dev_name in enumerate(CN_DEVELOPERS, start=1):
         print(f"[cn_dev {idx}/{len(CN_DEVELOPERS)}] Searching: {dev_name}")
 
-        # ---- search endpoint ----
         results = _call_with_retry(
             lambda d=dev_name: gps.search(d, lang="zh", country="cn", n_hits=SEARCH_N_HITS),
             desc="search",
             delay=delay,
         )
         results = list(results) if results else []
-        print(f"  -> {len(results)} results (search)")
+        print(f"  -> {len(results)} results")
 
         for r in results:
             _process_result(r)
         time.sleep(delay)
-
-        # ---- developer endpoint (extra coverage) ----
-        dev_results = _call_with_retry(
-            lambda d=dev_name: gps.developer(d, lang="zh", country="cn"),
-            desc="dev",
-            delay=delay,
-        )
-        dev_results = list(dev_results) if dev_results else []
-
-        if dev_results:
-            print(f"  -> {len(dev_results)} results (developer endpoint)")
-            for r in dev_results:
-                _process_result(r)
-            time.sleep(delay)
 
     # Flush any remaining records.
     _flush()

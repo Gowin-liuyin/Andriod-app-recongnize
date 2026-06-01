@@ -13,8 +13,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import AppDatabase
 
-from google_play_scraper import search as gp_search, app as gp_app
-from google_play_scraper import category, collection
+from google_play_scraper import search as gp_search
 from google_play_scraper.exceptions import NotFoundError, ExtraHTTPError
 
 
@@ -25,58 +24,202 @@ from google_play_scraper.exceptions import NotFoundError, ExtraHTTPError
 BATCH_SIZE = 100          # flush to DB every N unique apps
 MAX_RETRIES = 3           # retry count for transient failures
 RETRY_BASE_DELAY = 1.0    # seconds — multiplied by 2**attempt on retry
+N_HITS = 250              # max results per query
 
-# Every category known to google-play-scraper (for logging / future use).
-ALL_CATEGORIES = [
-    category.GAME, category.SOCIAL, category.TOOLS, category.COMMUNICATION,
-    category.PRODUCTIVITY, category.PHOTOGRAPHY, category.VIDEO_PLAYERS,
-    category.MUSIC_AND_AUDIO, category.ENTERTAINMENT, category.NEWS_AND_MAGAZINES,
-    category.SHOPPING, category.TRAVEL_AND_LOCAL, category.LIFESTYLE,
-    category.HEALTH_AND_FITNESS, category.EDUCATION, category.FINANCE,
-    category.BUSINESS, category.MEDICAL, category.BOOKS_AND_REFERENCE,
-    category.PERSONALIZATION, category.SPORTS, category.COMICS,
-    category.AUTO_AND_VEHICLES, category.LIBRARIES_AND_DEMO, category.PARENTING,
-    category.ART_AND_DESIGN, category.MAPS_AND_NAVIGATION, category.WEATHER,
-    category.EVENTS, category.BEAUTY, category.FOOD_AND_DRINK,
-    category.HOUSE_AND_HOME, category.DATING,
+# ---- Chinese search terms (lang=zh, country=cn) ----
+
+_ZH_TERMS: list[str] = [
+    # Category / domain keywords
+    "社交", "通讯", "工具", "摄影", "相机", "视频", "音乐", "娱乐", "新闻",
+    "购物", "旅行", "旅游", "健康", "健身", "教育", "学习", "金融", "理财",
+    "阅读", "小说", "漫画", "动画", "地图", "导航", "天气", "美食", "外卖",
+    "支付", "直播", "短视频", "修图", "清理", "安全", "输入法",
+    "VPN", "翻墙", "加密", "钱包", "币", "挖矿",
+    "AI", "人工智能", "聊天", "约会", "交友", "租房", "买房",
+    "快递", "打车", "共享", "二手", "招聘", "求职",
+    "股票", "基金", "保险", "医疗", "医院",
+    "游戏", "学习", "英语", "翻译", "笔记", "日历", "闹钟",
+    "备份", "加速", "省电", "壁纸", "主题", "桌面", "文件管理",
+    "浏览器", "录音", "扫描", "打印", "投影", "遥控", "监控", "安防",
+    "智能家居", "车联网", "自动驾驶",
+    # Popular Chinese apps / brands
+    "微信", "支付宝", "抖音", "快手", "小红书", "拼多多", "美团", "饿了么",
+    "京东", "淘宝", "天猫", "百度", "高德", "滴滴", "携程", "去哪儿",
+    "飞猪", "知乎", "豆瓣", "微博", "QQ", "网易", "搜狐", "优酷",
+    "爱奇艺", "腾讯", "B站", "哔哩哔哩", "虎牙", "斗鱼",
+    "陌陌", "探探", "闲鱼", "转转", "贝壳", "链家",
+    "今日头条", "西瓜视频", "火山", "美图", "美颜", "轻颜",
+    "Keep", "咕咚", "悦跑", "薄荷", "下厨房", "豆果",
+    "得到", "樊登", "喜马拉雅", "蜻蜓", "酷狗", "QQ音乐",
+    "网易云", "虾米", "咪咕", "沃", "天翼", "和",
+    "工商银行", "建设银行", "农业银行", "中国银行", "招商银行", "交通银行",
+    "浦发银行", "中信银行", "民生银行", "光大银行", "平安银行",
+    "华夏", "华泰", "中信建投", "国泰君安", "海通", "广发", "申万",
+    "同花顺", "东方财富", "雪球", "富途", "老虎", "币安",
+    "华为", "小米", "OPPO", "vivo", "三星", "锤子", "一加", "魅族",
+    "携程旅行", "艺龙", "同程", "途牛", "穷游", "马蜂窝",
+    "房天下", "安居客", "58同城", "赶集", "智联", "前程无忧", "BOSS直聘",
+    "滴滴出行", "曹操出行", "首汽", "神州", "顺丰", "圆通", "中通",
+    "申通", "韵达", "百世", "德邦", "菜鸟",
+    # Short/auto-complete terms
+    "",  # empty query — default results
+    "微", "小", "快", "新", "大", "爱", "美", "好", "安", "网",
+    "智", "云", "乐", "宝", "通", "易", "联", "优", "酷",
+    "免费", "付费", "热门", "推荐", "排行", "最新", "必备",
+    "实用", "好玩", "神器", "助手", "管家", "大师",
+    "专业版", "高级版", "极速版", "轻量版",
+    "万能", "遥控器", "计算器", "手电筒", "指南针", "二维码",
+    "条形码", "名片", "身份证", "驾照", "签证", "护照",
+    "机票", "火车票", "酒店", "民宿", "景点", "攻略",
+    "汇率", "单位换算", "尺子", "水平仪", "分贝仪", "测速",
+    "恋爱", "结婚", "婚礼", "宝宝", "育儿", "孕期",
+    "宠物", "狗", "猫", "鱼", "鸟",
+    "汽车", "摩托车", "电动车", "自行车", "公交", "地铁",
+    "停车", "充电", "加油", "洗车", "保养",
+    "足球", "篮球", "NBA", "世界杯", "电竞", "棋牌",
+    "斗地主", "麻将", "象棋", "围棋", "德州", "炸金花",
 ]
 
-ALL_COLLECTIONS = [
-    collection.TOP_FREE,
-    collection.TOP_PAID,
-    collection.TOP_GROSSING,
-]
-# TRENDING may not exist in all versions; include only if present.
-if hasattr(collection, "TRENDING"):
-    ALL_COLLECTIONS.append(collection.TRENDING)
+# Single letters a-z and digits 0-9 (trigger auto-complete for zh locale)
+_ZH_TERMS.extend(chr(c) for c in range(ord("a"), ord("z") + 1))
+_ZH_TERMS.extend(str(d) for d in range(10))
 
-# Search terms designed to surface a broad, diverse set of apps.
-# Single letters trigger auto-complete and surface apps alphabetically.
-# Chinese characters and category names target specific segments.
-SEARCH_CONFIGS = [
-    # ---- Chinese locale (zh / cn) ----
-    ("", "zh", "cn", 200),
-    *[(c, "zh", "cn", 100) for c in "abcdefghijklmnopqrstuvwxyz"],
-    *[(t, "zh", "cn", 100) for t in [
-        "微", "小", "快", "新", "大", "爱", "美", "好", "安", "网",
-        "智", "云", "乐", "宝", "通", "易", "联", "优", "酷",
-        "游戏", "社交", "工具", "通讯", "摄影", "相机", "视频",
-        "音乐", "娱乐", "新闻", "购物", "旅行", "旅游", "健康",
-        "健身", "教育", "学习", "金融", "理财", "阅读", "小说",
-        "漫画", "地图", "导航", "天气", "美食", "外卖", "支付",
-        "直播", "短视频", "修图", "清理", "安全", "输入法",
-    ]],
-    # ---- English locale (en / us) ----
-    *[(c, "en", "us", 100) for c in "abcdefghijklmnopqrstuvwxyz"],
-    *[(t, "en", "us", 100) for t in [
-        "game", "chat", "social", "tool", "photo", "video", "music",
-        "entertainment", "news", "shopping", "travel", "health",
-        "fitness", "education", "finance", "reading", "map", "weather",
-        "food", "dating", "sport", "design", "editor", "wallpaper",
-        "launcher", "keyboard", "cleaner", "security", "vpn",
-        "scanner", "player", "recorder", "calendar", "notes",
-    ]],
+# Common Chinese characters (one-char queries surface alphabetically adjacent apps)
+_ZH_COMMON_CHARS: list[str] = [
+    "的", "一", "是", "在", "不", "了", "有", "和", "人", "这",
+    "中", "大", "为", "上", "个", "国", "我", "以", "要", "他",
+    "时", "来", "用", "们", "生", "到", "作", "地", "于", "出",
+    "就", "分", "对", "成", "会", "可", "主", "发", "年", "动",
+    "同", "工", "也", "能", "下", "过", "子", "说", "产", "种",
+    "面", "而", "方", "后", "多", "定", "行", "学", "法", "所",
+    "民", "得", "经", "十", "三", "之", "进", "着", "等", "部",
+    "度", "家", "电", "力", "里", "如", "水", "化", "高", "自",
+    "二", "理", "起", "物", "现", "实", "加", "量", "都", "两",
+    "体", "制", "机", "当", "使", "点", "从", "业", "本", "去",
+    "把", "性", "应", "开", "它", "合", "因", "只", "头", "长",
+    "文", "无", "明", "问", "其", "公", "已", "天", "正", "想",
+    "心", "看", "知", "又", "关", "比", "但", "重", "那", "此",
+    "意", "第", "道", "还", "样", "前", "些", "与", "将", "被",
+    "外", "最", "给", "情", "向", "间", "几", "数", "内", "老",
 ]
+_ZH_TERMS.extend(_ZH_COMMON_CHARS)
+
+# ---- English search terms (lang=en, country=us) ----
+
+_EN_TERMS: list[str] = [
+    # Communication / social
+    "chat", "messaging", "message", "sms", "call", "video call", "contacts",
+    "dialer", "phone", "social", "dating", "meet", "friends", "community",
+    "forum", "group",
+    # Privacy / security
+    "vpn", "proxy", "encrypt", "password", "manager", "security", "privacy",
+    "antivirus", "firewall", "authenticator", "2fa", "lock", "vault", "hide",
+    # Crypto / finance
+    "crypto", "wallet", "bitcoin", "ethereum", "exchange", "trading", "mining",
+    "blockchain", "defi", "nft", "token", "stablecoin", "metamask",
+    "stock", "forex", "gold", "invest", "trade", "bank", "credit", "loan",
+    "mortgage", "insurance", "tax", "invoice", "receipt", "budget", "expense",
+    "pay", "payment", "mobile pay", "banking",
+    # AI / assistants
+    "ai", "artificial intelligence", "chatgpt", "gpt", "assistant", "copilot",
+    "chatbot", "ml", "deep learning", "image generator", "llm",
+    # Productivity / office
+    "notes", "todo", "task", "reminder", "alarm", "clock", "timer",
+    "calendar", "planner", "journal", "diary", "habit", "goal",
+    "office", "document", "spreadsheet", "presentation", "pdf",
+    "word", "excel", "powerpoint", "slides", "form", "survey", "poll",
+    "scan", "sign", "contract", "fax", "print",
+    "resume", "cv", "job", "freelance", "gig", "project", "team",
+    "workspace", "collaboration", "meeting", "webinar", "conference",
+    "remote desktop", "vnc", "teamviewer", "anydesk", "screen share",
+    # Tools / utilities
+    "file", "transfer", "share", "cloud", "storage", "backup", "sync",
+    "browser", "internet", "web", "search", "download", "upload",
+    "calculator", "scanner", "qr", "barcode", "translate", "dictionary",
+    "unit converter", "compass", "flashlight", "ruler", "level",
+    "wifi", "bluetooth", "speed test", "data monitor", "cleaner",
+    "booster", "battery", "cpu", "device info", "benchmark",
+    # Media
+    "photo", "camera", "selfie", "filter", "edit", "collage", "effect",
+    "video", "player", "editor", "movie maker", "slideshow",
+    "music", "audio", "mp3", "recorder", "equalizer", "dj", "mixer",
+    "radio", "podcast", "streaming", "tv", "iptv", "movie", "cinema",
+    # Games
+    "game", "puzzle", "arcade", "action", "rpg", "strategy", "card",
+    "casino", "bet", "lottery", "board", "chess", "sudoku", "word",
+    "trivia", "quiz", "brain", "kids game",
+    # Health / fitness
+    "fitness", "workout", "gym", "running", "cycling", "yoga", "meditation",
+    "sleep", "diet", "calorie", "fasting", "water", "pedometer",
+    "health", "doctor", "pharmacy", "hospital", "clinic", "therapy",
+    "mental health", "period", "pregnancy", "baby", "parent",
+    # Lifestyle
+    "food", "recipe", "cooking", "delivery", "restaurant", "grocery",
+    "shopping", "deals", "coupon", "discount", "auction", "sell", "buy",
+    "marketplace", "classifieds", "second hand", "thrift",
+    "home", "house", "apartment", "real estate", "property", "rent",
+    "roommate", "flat", "garden", "plant", "flower",
+    "furniture", "decor", "interior design", "diy", "craft",
+    "art", "draw", "paint", "sketch", "design", "logo", "poster",
+    "invite", "card", "flyer", "collage", "frame",
+    "fashion", "beauty", "makeup", "hair", "nails", "style", "outfit",
+    # Education / learning
+    "learn", "study", "course", "education", "tutor", "language",
+    "english", "spanish", "french", "german", "chinese", "japanese",
+    "korean", "coding", "programming", "math", "science", "history",
+    # Books / reading
+    "ebook", "reader", "book", "audiobook", "library", "comic", "manga",
+    "news", "rss", "magazine", "newspaper", "blog",
+    # Travel / navigation
+    "travel", "flight", "hotel", "booking", "airbnb", "hostel",
+    "map", "navigation", "gps", "compass", "speed", "traffic",
+    "parking", "charge", "ev", "fuel", "gas", "car", "auto", "bike",
+    "motorcycle", "truck", "bus", "train", "metro", "subway", "taxi",
+    "ride share", "scooter", "rental", "car share",
+    # Sports
+    "sport", "score", "live score", "football", "soccer", "basketball",
+    "baseball", "tennis", "golf", "hockey", "cricket", "rugby",
+    "fantasy sports", "betting", "odds",
+    # Weather / nature
+    "weather", "forecast", "radar", "climate", "sunrise", "moon phase",
+    "tide", "earthquake", "aurora",
+    # Pets / animals
+    "pet", "dog", "cat", "fish", "bird", "horse", "snake", "reptile",
+    "vet", "animal",
+    # Customization
+    "wallpaper", "theme", "icon", "launcher", "keyboard", "ringtone",
+    "notification", "widget", "lock screen", "home screen",
+    # Certification / ID
+    "certification", "license", "id", "passport", "visa", "immigration",
+    "driver license", "test prep", "exam",
+    # Miscellaneous
+    "watch", "wear", "wearable", "smartwatch", "fitness band",
+    "remote control", "smart home", "iot", "home automation",
+    "vr", "virtual reality", "ar", "augmented reality",
+    "kids", "family", "parental control", "elder", "senior",
+    "religion", "bible", "quran", "prayer", "meditation app",
+]
+
+# Single letters a-z and digits 0-9 (trigger auto-complete for en locale)
+_EN_TERMS.extend(chr(c) for c in range(ord("a"), ord("z") + 1))
+_EN_TERMS.extend(str(d) for d in range(10))
+
+# Additional short generic terms to round out coverage
+_EN_TERMS.extend([
+    "free", "pro", "lite", "premium", "hd", "plus", "best", "top",
+    "fast", "easy", "simple", "smart", "app", "mobile", "android",
+    "google", "play", "tool", "utility", "helper", "guide", "tutorial",
+    "manual", "catalog", "finder", "tracker", "monitor", "control",
+    "live", "offline", "online", "network", "social network",
+])
+
+# ---------------------------------------------------------------------------
+# Build the flat search-configs list
+# ---------------------------------------------------------------------------
+
+SEARCH_CONFIGS: list[tuple[str, str, str, int]] = []
+SEARCH_CONFIGS += [(t, "zh", "cn", N_HITS) for t in _ZH_TERMS]
+SEARCH_CONFIGS += [(t, "en", "us", N_HITS) for t in _EN_TERMS]
 
 
 # ---------------------------------------------------------------------------
@@ -168,8 +311,10 @@ def _resolve_english_names(
     This is an **optional** second pass — if the network is slow or the
     list is large, we give up early rather than blocking the pipeline.
     """
+    from google_play_scraper import app as gp_app
+
     resolved = 0
-    for i, pkg in enumerate(packages_need_en):
+    for i, pkg in enumerate(sorted(packages_need_en)):
         try:
             detail = gp_app(pkg, lang="en", country="us")
             en_name = (detail.get("title") or "").strip()
@@ -193,7 +338,7 @@ def _resolve_english_names(
 # ---------------------------------------------------------------------------
 
 def scrape(db: AppDatabase, delay: float = 0.3) -> int:
-    """Scrape Google Play top charts.  Returns number of **new** apps added.
+    """Scrape Google Play search results.  Returns number of **new** apps added.
 
     Parameters
     ----------
