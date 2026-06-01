@@ -121,8 +121,8 @@ def build_all(db_path: str = None, skip_play_store: bool = False) -> int:
 
     # Define the pipeline: (display_name, function, kwargs, is_skippable)
     steps = [
-        ("Chinese Manual Data",  scrape_cn_manual, {}),
         ("Debloat Lists",        scrape_debloat,   {}),
+        ("Chinese Manual Data",  scrape_cn_manual, {}),
         ("F-Droid Index",        scrape_fdroid,    {}),
         ("Chinese Developers",   scrape_cn_devs,   {"delay": 0.5}),
         ("Google Play Store",    scrape_play_store, {"delay": 0.3}),

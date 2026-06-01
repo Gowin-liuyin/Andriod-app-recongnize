@@ -115,17 +115,16 @@ def _extract_entries(
         if not pkg or not isinstance(pkg, str):
             continue
 
-        # Prefer `label`, fall back to `name`, then to the first line of
-        # `description` (the current UAD / MuntashirAkon schema only carries
-        # a description field).
+        # Only use `label` or `name` — these are clean one-line names.
+        # If neither is present, the entry has no usable app name, so skip it.
+        # Do NOT fall back to `description` — it's a long paragraph, not a name.
         label = entry.get("label") or entry.get("name")
-        if not label:
-            desc = entry.get("description")
-            if isinstance(desc, str) and desc.strip():
-                label = desc.strip().split("\n")[0].strip()
         if not label or not isinstance(label, str) or not label.strip():
             continue
         label = label.strip()
+        # Reject anything that looks like a verbose description rather than a name.
+        if len(label) > 50:
+            continue
 
         # Derive a category — most specific first.
         category = default_category
