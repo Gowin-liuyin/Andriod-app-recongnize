@@ -30,22 +30,18 @@ from database import AppDatabase
 # ---------------------------------------------------------------------------
 
 UAD_RAW_BASE = (
-    "https://raw.githubusercontent.com/Universal-Debloater-Alliance/"
-    "universal-android-preinstalled-lists/main/"
+    "https://raw.githubusercontent.com/MuntashirAkon/"
+    "android-debloat-list/master/"
 )
 
-# Manufacturer files to try under UAD-NG.  The filename stem is reused as the
-# ``category`` value (e.g. "Samsung", "Xiaomi").
+# UAD-NG organises entries by list type rather than by manufacturer.
 UAD_MANUFACTURERS = [
-    "samsung", "xiaomi", "huawei", "oppo", "vivo", "oneplus",
-    "google", "motorola", "nokia", "sony", "lg", "asus",
-    "lenovo", "zte", "alcatel", "amazon", "facebook", "microsoft",
-    "qualcomm", "mediatek", "misc",
+    "oem", "aosp", "google", "carrier", "misc",
 ]
 
 MUNTASHIR_URL = (
     "https://raw.githubusercontent.com/MuntashirAkon/"
-    "android-debloat-list/main/list.json"
+    "android-debloat-list/master/list.json"
 )
 
 REQUEST_TIMEOUT = 30  # seconds
@@ -119,8 +115,14 @@ def _extract_entries(
         if not pkg or not isinstance(pkg, str):
             continue
 
-        # Prefer `label`, fall back to `name`.
+        # Prefer `label`, fall back to `name`, then to the first line of
+        # `description` (the current UAD / MuntashirAkon schema only carries
+        # a description field).
         label = entry.get("label") or entry.get("name")
+        if not label:
+            desc = entry.get("description")
+            if isinstance(desc, str) and desc.strip():
+                label = desc.strip().split("\n")[0].strip()
         if not label or not isinstance(label, str) or not label.strip():
             continue
         label = label.strip()
