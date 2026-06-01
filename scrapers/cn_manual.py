@@ -7638,6 +7638,39 @@ CN_APP_DICT: dict[str, dict] = {
         "developer": "环球网",
         "category": "News & Magazines",
     },
+
+    # --- System / OEM Packages ---
+    "com.samsung.android.mateagent": {
+        "app_name": "MATE Agent",
+        "developer": "Samsung",
+        "category": "System",
+    },
+    "com.samsung.android.arzone.zh": {
+        "app_name": "AR Zone",
+        "developer": "Samsung",
+        "category": "AR",
+    },
+    "com.samsung.android.arzone.en": {
+        "app_name": "AR Zone",
+        "developer": "Samsung",
+        "category": "AR",
+    },
+    "com.tms": {
+        "app_name": "Samsung TMS",
+        "developer": "Samsung",
+        "category": "System",
+    },
+    "com.google.android.overlay.modules.cellbroadcastservice": {
+        "app_name": "Cell Broadcast Service Overlay",
+        "developer": "Google",
+        "category": "System",
+    },
+    "com.sec.android.app.sbrowser": {
+        "app_name": "Samsung Internet Browser",
+        "app_name_en": "Samsung Internet",
+        "developer": "Samsung",
+        "category": "Browser",
+    },
 }
 # ---------------------------------------------------------------------------
 # Public API
